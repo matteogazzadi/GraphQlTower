@@ -82,7 +82,7 @@
 
                         @if (!string.IsNullOrEmpty(_errorMessage))
                         {
-                            <FluentMessageBar Intent="MessageBarIntent.Error">@_errorMessage</FluentMessageBar>
+                            <FluentMessageBar Intent="MessageIntent.Error">@_errorMessage</FluentMessageBar>
                         }
 
                         <FluentStack HorizontalGap="8">
@@ -102,7 +102,7 @@
 
                         @if (_healthResult is not null)
                         {
-                            <FluentMessageBar Intent="@(_healthResult.Contains("healthy") ? MessageBarIntent.Success : MessageBarIntent.Error)">
+                            <FluentMessageBar Intent="@(_healthResult.Contains("healthy") ? MessageIntent.Success : MessageIntent.Error)">
                                 @_healthResult
                             </FluentMessageBar>
                         }
