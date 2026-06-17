@@ -117,8 +117,8 @@ static void EnsureSqliteDirectoryExists(string connectionString)
     if (string.IsNullOrWhiteSpace(dataSource) || dataSource == ":memory:")
         return;
 
-    var fullPath = Path.GetFullPath(dataSource);
-    var directory = Path.GetDirectoryName(fullPath);
+    var fullPath = System.IO.Path.GetFullPath(dataSource);
+    var directory = System.IO.Path.GetDirectoryName(fullPath);
     if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
         Directory.CreateDirectory(directory);
 }
