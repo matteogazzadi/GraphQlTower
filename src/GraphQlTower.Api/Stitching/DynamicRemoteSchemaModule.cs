@@ -1,6 +1,6 @@
 using GraphQlTower.Shared.Interfaces;
 using HotChocolate;
-using HotChocolate.Configuration;
+using HotChocolate.Execution.Configuration;
 using HotChocolate.Language;
 using HotChocolate.Stitching.SchemaDefinitions;
 using HotChocolate.Types;
