@@ -57,8 +57,12 @@ public class EfServiceRegistry : IServiceRegistry
         existing.IsEnabled = service.IsEnabled;
         existing.UpdatedAt = DateTimeOffset.UtcNow;
 
-        // Replace headers
-        _db.ServiceHeaders.RemoveRange(existing.Headers);
+        // Replace headers — query DB directly so we remove persisted rows, not the
+        // caller's unsaved in-memory list (which may already have replaced the nav property).
+        var persisted = await _db.ServiceHeaders
+            .Where(h => h.UpstreamServiceId == existing.Id)
+            .ToListAsync(ct);
+        _db.ServiceHeaders.RemoveRange(persisted);
         existing.Headers = service.Headers.Select(h => new ServiceHeader
         {
             Id = Guid.NewGuid(),
