@@ -47,29 +47,39 @@ public class EfServiceRegistry : IServiceRegistry
 
     public async Task UpdateAsync(UpstreamService service, CancellationToken ct = default)
     {
+        // Snapshot incoming values up front. The caller may pass the same instance that
+        // EF tracks (and returns below), so reading service.* after we mutate the tracked
+        // entity — or its Headers collection — would observe our own changes and lose data.
+        var displayName = service.DisplayName;
+        var url = service.Url;
+        var isEnabled = service.IsEnabled;
+        var newHeaders = service.Headers
+            .Select(h => (h.Key, h.Value))
+            .ToList();
+
         var existing = await _db.UpstreamServices
             .Include(s => s.Headers)
             .FirstOrDefaultAsync(s => s.Id == service.Id, ct)
             ?? throw new InvalidOperationException($"Service {service.Id} not found.");
 
-        existing.DisplayName = service.DisplayName;
-        existing.Url = service.Url;
-        existing.IsEnabled = service.IsEnabled;
+        existing.DisplayName = displayName;
+        existing.Url = url;
+        existing.IsEnabled = isEnabled;
         existing.UpdatedAt = DateTimeOffset.UtcNow;
 
-        // Replace headers — query DB directly so we remove persisted rows, not the
-        // caller's unsaved in-memory list (which may already have replaced the nav property).
-        var persisted = await _db.ServiceHeaders
-            .Where(h => h.UpstreamServiceId == existing.Id)
-            .ToListAsync(ct);
-        _db.ServiceHeaders.RemoveRange(persisted);
-        existing.Headers = service.Headers.Select(h => new ServiceHeader
+        // Clear the tracked header collection (cascade delete removes the orphaned rows)
+        // and rebuild it from the snapshot.
+        existing.Headers.Clear();
+        foreach (var (key, value) in newHeaders)
         {
-            Id = Guid.NewGuid(),
-            UpstreamServiceId = existing.Id,
-            Key = h.Key,
-            Value = h.Value
-        }).ToList();
+            existing.Headers.Add(new ServiceHeader
+            {
+                Id = Guid.NewGuid(),
+                UpstreamServiceId = existing.Id,
+                Key = key,
+                Value = value
+            });
+        }
 
         await _db.SaveChangesAsync(ct);
         _changes.OnNext(new RegistryChange(ChangeType.Updated, existing.Id));
