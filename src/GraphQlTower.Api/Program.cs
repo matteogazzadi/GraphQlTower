@@ -26,8 +26,8 @@ builder.Services.AddScoped<IServiceRegistry, EfServiceRegistry>();
 builder.Services.AddHttpClient();
 
 // HotChocolate stitching
-// DynamicRemoteSchemaModule is a singleton that loads schemas from the DB at executor-build
-// time and fires TypesChanged whenever the registry changes, triggering a lazy rebuild.
+// DynamicRemoteSchemaModule fires TypesChanged on registry changes so HC evicts
+// the executor. Remote schemas are registered via AddRemoteSchema below.
 builder.Services.AddSingleton<DynamicRemoteSchemaModule>();
 builder.Services
     .AddGraphQLServer()
