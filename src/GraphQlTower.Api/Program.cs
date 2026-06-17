@@ -74,11 +74,23 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ServiceRegistryDbContext>();
+    var startupLogger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+
+    var dbPath = db.Database.GetConnectionString() ?? "(unknown)";
+    startupLogger.LogInformation("Database connection string: {ConnectionString}", dbPath);
+
+    var pending = await db.Database.GetPendingMigrationsAsync();
+    startupLogger.LogInformation("Pending migrations: {Count} ({Names})",
+        pending.Count(), string.Join(", ", pending.Any() ? pending : new[] { "none" }));
+
     await db.Database.MigrateAsync();
 
+    var applied = await db.Database.GetAppliedMigrationsAsync();
+    startupLogger.LogInformation("Applied migrations after MigrateAsync: {Names}",
+        string.Join(", ", applied.Any() ? applied : new[] { "none" }));
+
     var registry = scope.ServiceProvider.GetRequiredService<IServiceRegistry>();
-    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-    await DatabaseSeeder.SeedAsync(registry, logger);
+    await DatabaseSeeder.SeedAsync(registry, startupLogger);
 }
 
 if (app.Environment.IsDevelopment())
