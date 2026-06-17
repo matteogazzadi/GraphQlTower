@@ -1,5 +1,6 @@
 using FluentAssertions;
 using GraphQlTower.Api.Data;
+using Xunit;
 using GraphQlTower.Shared.Interfaces;
 using GraphQlTower.Shared.Models;
 using Microsoft.EntityFrameworkCore;

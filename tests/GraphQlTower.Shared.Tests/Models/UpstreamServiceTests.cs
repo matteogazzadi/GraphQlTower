@@ -1,5 +1,6 @@
 using FluentAssertions;
 using GraphQlTower.Shared.Models;
+using Xunit;
 
 namespace GraphQlTower.Shared.Tests.Models;
 

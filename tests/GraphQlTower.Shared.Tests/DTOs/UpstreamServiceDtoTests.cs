@@ -1,5 +1,6 @@
 using FluentAssertions;
 using GraphQlTower.Shared.DTOs;
+using Xunit;
 
 namespace GraphQlTower.Shared.Tests.DTOs;
 

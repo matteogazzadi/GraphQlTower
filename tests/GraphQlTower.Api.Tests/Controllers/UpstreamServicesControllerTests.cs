@@ -1,5 +1,6 @@
 using FluentAssertions;
 using GraphQlTower.Api.Controllers;
+using Xunit;
 using GraphQlTower.Shared.DTOs;
 using GraphQlTower.Shared.Interfaces;
 using GraphQlTower.Shared.Models;
