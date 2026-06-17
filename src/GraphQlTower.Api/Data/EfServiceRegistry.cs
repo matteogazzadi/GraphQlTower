@@ -63,8 +63,11 @@ public class EfServiceRegistry : IServiceRegistry
         // navigation would otherwise corrupt change tracking. Reload a clean graph instead.
         _db.ChangeTracker.Clear();
 
+        // Load the parent only — do NOT Include the Headers navigation. Mutating the
+        // navigation collection relies on EF's orphan handling, which the InMemory
+        // provider does not apply consistently. Instead we operate on the ServiceHeaders
+        // set directly: delete the existing rows and insert the new ones.
         var existing = await _db.UpstreamServices
-            .Include(s => s.Headers)
             .FirstOrDefaultAsync(s => s.Id == id, ct)
             ?? throw new InvalidOperationException($"Service {id} not found.");
 
@@ -73,12 +76,14 @@ public class EfServiceRegistry : IServiceRegistry
         existing.IsEnabled = isEnabled;
         existing.UpdatedAt = DateTimeOffset.UtcNow;
 
-        // Clear the tracked header collection (cascade delete removes the orphaned rows)
-        // and rebuild it from the snapshot.
-        existing.Headers.Clear();
+        var oldHeaders = await _db.ServiceHeaders
+            .Where(h => h.UpstreamServiceId == id)
+            .ToListAsync(ct);
+        _db.ServiceHeaders.RemoveRange(oldHeaders);
+
         foreach (var (key, value) in newHeaders)
         {
-            existing.Headers.Add(new ServiceHeader
+            _db.ServiceHeaders.Add(new ServiceHeader
             {
                 Id = Guid.NewGuid(),
                 UpstreamServiceId = id,
