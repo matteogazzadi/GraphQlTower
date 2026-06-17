@@ -6,5 +6,7 @@ metadata:
     {{- include "graphql-tower.labels" . | nindent 4 }}
 data:
   {{- if .Values.initialServices }}
+  # Consumed by DatabaseSeeder via TOWER_INITIAL_SERVICES env var on first boot.
+  # Each entry: { "Name": "slug", "DisplayName": "Label", "Url": "http://...", "Enabled": true }
   TOWER_INITIAL_SERVICES: {{ .Values.initialServices | toJson | quote }}
   {{- end }}

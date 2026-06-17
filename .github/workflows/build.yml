@@ -1,0 +1,218 @@
+name: Build — Publish Artifacts
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      configuration:
+        description: Build configuration
+        required: false
+        default: Release
+        type: choice
+        options: [Release, Debug]
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_VERSION: "8.0.x"
+  CONFIGURATION: ${{ inputs.configuration || 'Release' }}
+
+jobs:
+  build-api:
+    name: Build API — ${{ matrix.rid }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - rid: win-x64
+            os_label: Windows (x64)
+          - rid: linux-x64
+            os_label: Linux (x64)
+          - rid: osx-x64
+            os_label: macOS (x64)
+          - rid: osx-arm64
+            os_label: macOS (Apple Silicon)
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore
+        run: dotnet restore src/GraphQlTower.Api/GraphQlTower.Api.csproj
+
+      - name: Publish (self-contained)
+        run: |
+          dotnet publish src/GraphQlTower.Api/GraphQlTower.Api.csproj \
+            --configuration ${{ env.CONFIGURATION }} \
+            --runtime ${{ matrix.rid }} \
+            --self-contained true \
+            --output ./publish/api/${{ matrix.rid }} \
+            -p:PublishSingleFile=true \
+            -p:PublishTrimmed=false \
+            -p:DebugType=none \
+            -p:DebugSymbols=false
+
+      - name: Bundle with run scripts and README
+        shell: bash
+        run: |
+          OUT=./publish/api/${{ matrix.rid }}
+          cp README.md "$OUT/README.md"
+
+          # Windows
+          if [[ "${{ matrix.rid }}" == win* ]]; then
+            cat > "$OUT/run-api.bat" << 'EOF'
+          @echo off
+          echo Starting GraphQL Tower API...
+          echo Gateway:    http://localhost:5000/graphql
+          echo IDE:        http://localhost:5000/graphql/ui
+          echo Swagger:    http://localhost:5000/swagger
+          echo Health:     http://localhost:5000/healthz/ready
+          echo.
+          set ConnectionStrings__Registry=Data Source=registry.db
+          set ASPNETCORE_ENVIRONMENT=Development
+          set ASPNETCORE_URLS=http://localhost:5000
+          GraphQlTower.Api.exe
+          EOF
+          else
+            # Unix
+            cat > "$OUT/run-api.sh" << 'EOF'
+          #!/bin/bash
+          echo "Starting GraphQL Tower API..."
+          echo "Gateway:    http://localhost:5000/graphql"
+          echo "IDE:        http://localhost:5000/graphql/ui"
+          echo "Swagger:    http://localhost:5000/swagger"
+          echo "Health:     http://localhost:5000/healthz/ready"
+          export ConnectionStrings__Registry="Data Source=registry.db"
+          export ASPNETCORE_ENVIRONMENT=Development
+          export ASPNETCORE_URLS=http://localhost:5000
+          ./GraphQlTower.Api "$@"
+          EOF
+            chmod +x "$OUT/run-api.sh"
+          fi
+
+      - name: Create ZIP archive
+        run: |
+          cd publish/api
+          zip -r ../../graphql-tower-api-${{ matrix.rid }}.zip ${{ matrix.rid }}/
+
+      - name: Upload API artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: graphql-tower-api-${{ matrix.rid }}
+          path: graphql-tower-api-${{ matrix.rid }}.zip
+          retention-days: 90
+
+  build-web:
+    name: Build Web — ${{ matrix.rid }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - rid: win-x64
+            os_label: Windows (x64)
+          - rid: linux-x64
+            os_label: Linux (x64)
+          - rid: osx-x64
+            os_label: macOS (x64)
+          - rid: osx-arm64
+            os_label: macOS (Apple Silicon)
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore
+        run: dotnet restore src/GraphQlTower.Web/GraphQlTower.Web.csproj
+
+      - name: Publish (self-contained)
+        run: |
+          dotnet publish src/GraphQlTower.Web/GraphQlTower.Web.csproj \
+            --configuration ${{ env.CONFIGURATION }} \
+            --runtime ${{ matrix.rid }} \
+            --self-contained true \
+            --output ./publish/web/${{ matrix.rid }} \
+            -p:PublishSingleFile=true \
+            -p:PublishTrimmed=false \
+            -p:DebugType=none \
+            -p:DebugSymbols=false
+
+      - name: Bundle with run scripts
+        shell: bash
+        run: |
+          OUT=./publish/web/${{ matrix.rid }}
+
+          if [[ "${{ matrix.rid }}" == win* ]]; then
+            cat > "$OUT/run-web.bat" << 'EOF'
+          @echo off
+          echo Starting GraphQL Tower Admin UI...
+          echo Admin UI: http://localhost:5001
+          echo.
+          echo Make sure the API is running on http://localhost:5000 first.
+          echo.
+          set GatewayApi__BaseUrl=http://localhost:5000
+          set ASPNETCORE_ENVIRONMENT=Development
+          set ASPNETCORE_URLS=http://localhost:5001
+          GraphQlTower.Web.exe
+          EOF
+          else
+            cat > "$OUT/run-web.sh" << 'EOF'
+          #!/bin/bash
+          echo "Starting GraphQL Tower Admin UI..."
+          echo "Admin UI: http://localhost:5001"
+          echo ""
+          echo "Make sure the API is running on http://localhost:5000 first."
+          echo ""
+          export GatewayApi__BaseUrl=http://localhost:5000
+          export ASPNETCORE_ENVIRONMENT=Development
+          export ASPNETCORE_URLS=http://localhost:5001
+          ./GraphQlTower.Web "$@"
+          EOF
+            chmod +x "$OUT/run-web.sh"
+          fi
+
+      - name: Create ZIP archive
+        run: |
+          cd publish/web
+          zip -r ../../graphql-tower-web-${{ matrix.rid }}.zip ${{ matrix.rid }}/
+
+      - name: Upload Web artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: graphql-tower-web-${{ matrix.rid }}
+          path: graphql-tower-web-${{ matrix.rid }}.zip
+          retention-days: 90
+
+  build-summary:
+    name: Build Summary
+    runs-on: ubuntu-latest
+    needs: [build-api, build-web]
+    if: always()
+    steps:
+      - name: Report status
+        run: |
+          echo "## Build Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| API (win-x64)   | ${{ needs.build-api.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| API (linux-x64) | ${{ needs.build-api.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| API (osx-x64)   | ${{ needs.build-api.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| API (osx-arm64) | ${{ needs.build-api.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Web (all RIDs)  | ${{ needs.build-web.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Artifacts are available for 90 days under **Actions → this run → Artifacts**." >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,246 @@
+name: Release — Tag & Publish
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  DOTNET_VERSION: "8.0.x"
+
+jobs:
+  release:
+    name: Create Release
+    # Only run when the PR was actually merged (not just closed)
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # needed to create tags and releases
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history needed to count tags for versioning
+
+      - name: Compute next version (CalVer YYYY.MM.patch)
+        id: version
+        run: |
+          YEAR=$(date +'%Y')
+          MONTH=$(date +'%-m')
+          PREFIX="v${YEAR}.${MONTH}."
+
+          # Count existing tags with this year.month prefix to get patch number
+          PATCH=$(git tag --list "${PREFIX}*" | wc -l | tr -d ' ')
+          VERSION="${YEAR}.${MONTH}.${PATCH}"
+          TAG="v${VERSION}"
+
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}"         >> "$GITHUB_OUTPUT"
+          echo "Computed version: ${TAG}"
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      # Build all four platforms for API
+      - name: Publish API (all platforms)
+        run: |
+          for RID in win-x64 linux-x64 osx-x64 osx-arm64; do
+            echo "Publishing API for ${RID}..."
+            dotnet publish src/GraphQlTower.Api/GraphQlTower.Api.csproj \
+              --configuration Release \
+              --runtime "${RID}" \
+              --self-contained true \
+              --output "./publish/api/${RID}" \
+              -p:PublishSingleFile=true \
+              -p:PublishTrimmed=false \
+              -p:DebugType=none \
+              -p:DebugSymbols=false \
+              -p:Version=${{ steps.version.outputs.version }}
+          done
+
+      # Build all four platforms for Web
+      - name: Publish Web (all platforms)
+        run: |
+          for RID in win-x64 linux-x64 osx-x64 osx-arm64; do
+            echo "Publishing Web for ${RID}..."
+            dotnet publish src/GraphQlTower.Web/GraphQlTower.Web.csproj \
+              --configuration Release \
+              --runtime "${RID}" \
+              --self-contained true \
+              --output "./publish/web/${RID}" \
+              -p:PublishSingleFile=true \
+              -p:PublishTrimmed=false \
+              -p:DebugType=none \
+              -p:DebugSymbols=false \
+              -p:Version=${{ steps.version.outputs.version }}
+          done
+
+      - name: Add run scripts and bundle ZIPs
+        shell: bash
+        run: |
+          TAG=${{ steps.version.outputs.tag }}
+
+          bundle_api() {
+            local RID=$1
+            local OUT="./publish/api/${RID}"
+            cp README.md "$OUT/README.md"
+
+            if [[ "$RID" == win* ]]; then
+              cat > "$OUT/run-api.bat" << 'SCRIPT'
+          @echo off
+          echo Starting GraphQL Tower API %TAG%...
+          echo Gateway:    http://localhost:5000/graphql
+          echo IDE:        http://localhost:5000/graphql/ui
+          echo Swagger:    http://localhost:5000/swagger
+          echo Health:     http://localhost:5000/healthz/ready
+          echo.
+          set ConnectionStrings__Registry=Data Source=registry.db
+          set ASPNETCORE_ENVIRONMENT=Production
+          set ASPNETCORE_URLS=http://localhost:5000
+          GraphQlTower.Api.exe
+          SCRIPT
+            else
+              cat > "$OUT/run-api.sh" << 'SCRIPT'
+          #!/bin/bash
+          echo "Starting GraphQL Tower API..."
+          echo "Gateway:    http://localhost:5000/graphql"
+          echo "IDE:        http://localhost:5000/graphql/ui"
+          echo "Swagger:    http://localhost:5000/swagger"
+          echo "Health:     http://localhost:5000/healthz/ready"
+          export ConnectionStrings__Registry="Data Source=registry.db"
+          export ASPNETCORE_ENVIRONMENT=Production
+          export ASPNETCORE_URLS=http://localhost:5000
+          ./GraphQlTower.Api "$@"
+          SCRIPT
+              chmod +x "$OUT/run-api.sh"
+            fi
+
+            cd publish/api
+            zip -r "../../graphql-tower-api-${RID}-${TAG}.zip" "${RID}/"
+            cd ../..
+          }
+
+          bundle_web() {
+            local RID=$1
+            local OUT="./publish/web/${RID}"
+
+            if [[ "$RID" == win* ]]; then
+              cat > "$OUT/run-web.bat" << 'SCRIPT'
+          @echo off
+          echo Starting GraphQL Tower Admin UI...
+          echo Admin UI:   http://localhost:5001
+          echo.
+          echo Requires the API to be running on http://localhost:5000
+          echo.
+          set GatewayApi__BaseUrl=http://localhost:5000
+          set ASPNETCORE_ENVIRONMENT=Production
+          set ASPNETCORE_URLS=http://localhost:5001
+          GraphQlTower.Web.exe
+          SCRIPT
+            else
+              cat > "$OUT/run-web.sh" << 'SCRIPT'
+          #!/bin/bash
+          echo "Starting GraphQL Tower Admin UI..."
+          echo "Admin UI:   http://localhost:5001"
+          echo ""
+          echo "Requires the API to be running on http://localhost:5000"
+          echo ""
+          export GatewayApi__BaseUrl=http://localhost:5000
+          export ASPNETCORE_ENVIRONMENT=Production
+          export ASPNETCORE_URLS=http://localhost:5001
+          ./GraphQlTower.Web "$@"
+          SCRIPT
+              chmod +x "$OUT/run-web.sh"
+            fi
+
+            cd publish/web
+            zip -r "../../graphql-tower-web-${RID}-${TAG}.zip" "${RID}/"
+            cd ../..
+          }
+
+          for RID in win-x64 linux-x64 osx-x64 osx-arm64; do
+            bundle_api "$RID"
+            bundle_web "$RID"
+          done
+
+      - name: Create Git tag
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ steps.version.outputs.tag }}" \
+            -m "Release ${{ steps.version.outputs.tag }} — merged PR #${{ github.event.pull_request.number }}: ${{ github.event.pull_request.title }}"
+          git push origin "${{ steps.version.outputs.tag }}"
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          PR_AUTHOR="${{ github.event.pull_request.user.login }}"
+          PR_BODY=$(cat << 'EOF'
+          ${{ github.event.pull_request.body }}
+          EOF
+          )
+
+          cat >> $GITHUB_OUTPUT << NOTES
+          body<<DELIM
+          ## GraphQL Tower ${{ steps.version.outputs.tag }}
+
+          **Merged PR #${PR_NUMBER}** — ${PR_TITLE} (by @${PR_AUTHOR})
+
+          ${PR_BODY}
+
+          ---
+
+          ## Downloads
+
+          Pick the archive for your OS and run the included script:
+
+          | File | Platform |
+          |------|----------|
+          | \`graphql-tower-api-win-x64-${{ steps.version.outputs.tag }}.zip\` | Windows 64-bit |
+          | \`graphql-tower-api-linux-x64-${{ steps.version.outputs.tag }}.zip\` | Linux 64-bit |
+          | \`graphql-tower-api-osx-x64-${{ steps.version.outputs.tag }}.zip\` | macOS Intel |
+          | \`graphql-tower-api-osx-arm64-${{ steps.version.outputs.tag }}.zip\` | macOS Apple Silicon |
+          | \`graphql-tower-web-win-x64-${{ steps.version.outputs.tag }}.zip\` | Admin UI — Windows 64-bit |
+          | \`graphql-tower-web-linux-x64-${{ steps.version.outputs.tag }}.zip\` | Admin UI — Linux 64-bit |
+          | \`graphql-tower-web-osx-x64-${{ steps.version.outputs.tag }}.zip\` | Admin UI — macOS Intel |
+          | \`graphql-tower-web-osx-arm64-${{ steps.version.outputs.tag }}.zip\` | Admin UI — macOS Apple Silicon |
+
+          ### Quick Start (local)
+
+          1. Extract the API archive and run `run-api.sh` (or `run-api.bat` on Windows)
+          2. Extract the Web archive and run `run-web.sh` (or `run-web.bat` on Windows)
+          3. Open **http://localhost:5001** for the Admin UI
+          4. Open **http://localhost:5000/graphql/ui** for the GraphQL IDE
+          DELIM
+          NOTES
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "GraphQL Tower ${{ steps.version.outputs.tag }}"
+          body: ${{ steps.notes.outputs.body }}
+          draft: false
+          prerelease: false
+          files: |
+            graphql-tower-api-win-x64-${{ steps.version.outputs.tag }}.zip
+            graphql-tower-api-linux-x64-${{ steps.version.outputs.tag }}.zip
+            graphql-tower-api-osx-x64-${{ steps.version.outputs.tag }}.zip
+            graphql-tower-api-osx-arm64-${{ steps.version.outputs.tag }}.zip
+            graphql-tower-web-win-x64-${{ steps.version.outputs.tag }}.zip
+            graphql-tower-web-linux-x64-${{ steps.version.outputs.tag }}.zip
+            graphql-tower-web-osx-x64-${{ steps.version.outputs.tag }}.zip
+            graphql-tower-web-osx-arm64-${{ steps.version.outputs.tag }}.zip

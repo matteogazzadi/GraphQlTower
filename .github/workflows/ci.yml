@@ -1,0 +1,66 @@
+name: CI — Unit Tests
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Run Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore dependencies
+        run: dotnet restore GraphQlTower.sln
+
+      - name: Build (verify compilation)
+        run: dotnet build GraphQlTower.sln --no-restore --configuration Release
+
+      - name: Run tests with coverage
+        run: |
+          dotnet test GraphQlTower.sln \
+            --no-build \
+            --configuration Release \
+            --logger "trx;LogFileName=test-results.trx" \
+            --logger "console;verbosity=detailed" \
+            --collect:"XPlat Code Coverage" \
+            --results-directory ./test-results
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-${{ github.run_number }}
+          path: test-results/**/*.trx
+          retention-days: 30
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-${{ github.run_number }}
+          path: test-results/**/coverage.cobertura.xml
+          retention-days: 30
+
+      - name: Publish test summary
+        uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: xUnit Test Results
+          path: test-results/**/*.trx
+          reporter: dotnet-trx
+          fail-on-error: true

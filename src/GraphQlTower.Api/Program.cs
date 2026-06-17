@@ -71,7 +71,7 @@ using (var scope = app.Services.CreateScope())
 
     var registry = scope.ServiceProvider.GetRequiredService<IServiceRegistry>();
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-    await DatabaseSeeder.SeedFromEnvironmentAsync(registry, logger);
+    await DatabaseSeeder.SeedAsync(registry, app.Configuration, logger);
 }
 
 if (app.Environment.IsDevelopment())
