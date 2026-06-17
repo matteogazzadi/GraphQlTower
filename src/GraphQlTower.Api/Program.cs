@@ -18,6 +18,11 @@ builder.Host.UseSerilog((ctx, cfg) =>
 // SQLite registry
 var connectionString = builder.Configuration.GetConnectionString("Registry")
     ?? "Data Source=/data/registry.db";
+
+// SQLite won't create missing parent directories — ensure they exist so the
+// app works both locally and with a mounted volume (e.g. /data in Kubernetes).
+EnsureSqliteDirectoryExists(connectionString);
+
 builder.Services.AddDbContext<ServiceRegistryDbContext>(opts =>
     opts.UseSqlite(connectionString));
 builder.Services.AddScoped<IServiceRegistry, EfServiceRegistry>();
@@ -102,6 +107,21 @@ app.MapHealthChecks("/healthz/ready", new HealthCheckOptions
 });
 
 await app.RunAsync();
+
+// Creates the directory that holds the SQLite database file if it doesn't already
+// exist. SQLite fails with "unable to open database file" when the parent dir is missing.
+static void EnsureSqliteDirectoryExists(string connectionString)
+{
+    var sqlBuilder = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder(connectionString);
+    var dataSource = sqlBuilder.DataSource;
+    if (string.IsNullOrWhiteSpace(dataSource) || dataSource == ":memory:")
+        return;
+
+    var fullPath = System.IO.Path.GetFullPath(dataSource);
+    var directory = System.IO.Path.GetDirectoryName(fullPath);
+    if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+        Directory.CreateDirectory(directory);
+}
 
 static async Task WriteHealthCheckResponse(HttpContext context, HealthReport report)
 {

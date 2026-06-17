@@ -47,28 +47,53 @@ public class EfServiceRegistry : IServiceRegistry
 
     public async Task UpdateAsync(UpstreamService service, CancellationToken ct = default)
     {
-        var existing = await _db.UpstreamServices
-            .Include(s => s.Headers)
-            .FirstOrDefaultAsync(s => s.Id == service.Id, ct)
-            ?? throw new InvalidOperationException($"Service {service.Id} not found.");
+        // Snapshot incoming values up front. The caller may pass the same instance that
+        // EF tracks (and returns below), so reading service.* after we mutate the tracked
+        // entity — or its Headers collection — would observe our own changes and lose data.
+        var displayName = service.DisplayName;
+        var url = service.Url;
+        var isEnabled = service.IsEnabled;
+        var newHeaders = service.Headers
+            .Select(h => (h.Key, h.Value))
+            .ToList();
+        var id = service.Id;
 
-        existing.DisplayName = service.DisplayName;
-        existing.Url = service.Url;
-        existing.IsEnabled = service.IsEnabled;
+        // Detach anything the caller may have handed us. The same instance can already be
+        // tracked from a prior call (e.g. the object returned by AddAsync), and its mutated
+        // navigation would otherwise corrupt change tracking. Reload a clean graph instead.
+        _db.ChangeTracker.Clear();
+
+        // Load the parent only — do NOT Include the Headers navigation. Mutating the
+        // navigation collection relies on EF's orphan handling, which the InMemory
+        // provider does not apply consistently. Instead we operate on the ServiceHeaders
+        // set directly: delete the existing rows and insert the new ones.
+        var existing = await _db.UpstreamServices
+            .FirstOrDefaultAsync(s => s.Id == id, ct)
+            ?? throw new InvalidOperationException($"Service {id} not found.");
+
+        existing.DisplayName = displayName;
+        existing.Url = url;
+        existing.IsEnabled = isEnabled;
         existing.UpdatedAt = DateTimeOffset.UtcNow;
 
-        // Replace headers
-        _db.ServiceHeaders.RemoveRange(existing.Headers);
-        existing.Headers = service.Headers.Select(h => new ServiceHeader
+        var oldHeaders = await _db.ServiceHeaders
+            .Where(h => h.UpstreamServiceId == id)
+            .ToListAsync(ct);
+        _db.ServiceHeaders.RemoveRange(oldHeaders);
+
+        foreach (var (key, value) in newHeaders)
         {
-            Id = Guid.NewGuid(),
-            UpstreamServiceId = existing.Id,
-            Key = h.Key,
-            Value = h.Value
-        }).ToList();
+            _db.ServiceHeaders.Add(new ServiceHeader
+            {
+                Id = Guid.NewGuid(),
+                UpstreamServiceId = id,
+                Key = key,
+                Value = value
+            });
+        }
 
         await _db.SaveChangesAsync(ct);
-        _changes.OnNext(new RegistryChange(ChangeType.Updated, existing.Id));
+        _changes.OnNext(new RegistryChange(ChangeType.Updated, id));
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
