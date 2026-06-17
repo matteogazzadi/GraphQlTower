@@ -12,8 +12,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="HotChocolate.AspNetCore" Version="14.3.0" />
-    <PackageReference Include="HotChocolate.Stitching" Version="14.3.0" />
+    <!-- Use the latest stable 13.x line — 14.x is not yet on NuGet stable -->
+    <PackageReference Include="HotChocolate.AspNetCore" Version="13.*" />
+    <PackageReference Include="HotChocolate.Stitching" Version="13.*" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.11" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.11">
       <PrivateAssets>all</PrivateAssets>
@@ -21,7 +22,6 @@
     </PackageReference>
     <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="8.0.11" />
     <PackageReference Include="Polly" Version="8.4.2" />
-    <PackageReference Include="Polly.Extensions.Http" Version="3.0.0" />
     <PackageReference Include="Serilog.AspNetCore" Version="8.0.3" />
     <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
     <PackageReference Include="System.Reactive" Version="6.0.1" />

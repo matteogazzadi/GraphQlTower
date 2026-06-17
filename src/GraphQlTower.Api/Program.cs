@@ -25,12 +25,14 @@ builder.Services.AddScoped<IServiceRegistry, EfServiceRegistry>();
 // HttpClient factory (used by schema module and health checks)
 builder.Services.AddHttpClient();
 
-// HotChocolate stitching — DynamicRemoteSchemaModule is a singleton type module.
-// It subscribes to IServiceRegistry.Changes and fires TypesChanged to trigger re-stitching.
+// HotChocolate stitching
+// DynamicRemoteSchemaModule is a singleton that loads schemas from the DB at executor-build
+// time and fires TypesChanged whenever the registry changes, triggering a lazy rebuild.
+builder.Services.AddSingleton<DynamicRemoteSchemaModule>();
 builder.Services
-    .AddSingleton<DynamicRemoteSchemaModule>()
     .AddGraphQLServer()
-    .AddTypeModule(sp => sp.GetRequiredService<DynamicRemoteSchemaModule>());
+    .AddTypeModule(sp => sp.GetRequiredService<DynamicRemoteSchemaModule>())
+    .AddHttpRequestInterceptor<GatewayRequestInterceptor>();
 
 // Health checks
 builder.Services
@@ -116,4 +118,20 @@ static async Task WriteHealthCheckResponse(HttpContext context, HealthReport rep
         })
     });
     await context.Response.WriteAsync(result);
+}
+
+// Forwards the Authorization header from the incoming request to all upstream GraphQL calls.
+public class GatewayRequestInterceptor : HotChocolate.AspNetCore.IHttpRequestInterceptor
+{
+    public ValueTask OnCreateAsync(
+        HttpContext context,
+        HotChocolate.Execution.IRequestExecutor requestExecutor,
+        HotChocolate.Execution.IQueryRequestBuilder requestBuilder,
+        CancellationToken cancellationToken)
+    {
+        if (context.Request.Headers.TryGetValue("Authorization", out var auth))
+            requestBuilder.SetGlobalState("Authorization", auth.ToString());
+
+        return ValueTask.CompletedTask;
+    }
 }
