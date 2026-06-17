@@ -3,8 +3,7 @@
 <FluentLayout>
     <FluentHeader>
         <FluentStack HorizontalAlignment="HorizontalAlignment.Left" VerticalAlignment="VerticalAlignment.Center">
-            <FluentIcon Value="@(new Icons.Regular.Size24.DataTrending())" Color="Color.Lightweight" />
-            <FluentLabel Typo="Typography.H4" Color="Color.Lightweight" Style="margin-left: 8px;">
+            <FluentLabel Typo="Typography.H4" Color="Color.Lightweight">
                 GraphQL Tower
             </FluentLabel>
         </FluentStack>
@@ -16,15 +15,9 @@
 
     <FluentBodyContent>
         <FluentNavMenu Width="220" Title="Navigation">
-            <FluentNavLink Href="/" Match="NavLinkMatch.All" Icon="@(new Icons.Regular.Size20.Home())">
-                Dashboard
-            </FluentNavLink>
-            <FluentNavLink Href="/services" Icon="@(new Icons.Regular.Size20.CloudLink())">
-                Services
-            </FluentNavLink>
-            <FluentNavLink Href="/playground" Icon="@(new Icons.Regular.Size20.Code())">
-                Playground
-            </FluentNavLink>
+            <FluentNavLink Href="/" Match="NavLinkMatch.All">Dashboard</FluentNavLink>
+            <FluentNavLink Href="/services">Services</FluentNavLink>
+            <FluentNavLink Href="/playground">Playground</FluentNavLink>
         </FluentNavMenu>
 
         <FluentBodyContent Style="padding: 24px;">

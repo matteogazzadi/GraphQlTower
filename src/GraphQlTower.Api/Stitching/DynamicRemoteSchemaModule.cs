@@ -1,6 +1,8 @@
 using GraphQlTower.Shared.Interfaces;
+using HotChocolate;
 using HotChocolate.Language;
 using HotChocolate.Stitching.SchemaDefinitions;
+using HotChocolate.Types;
 using System.Net.Http.Json;
 using System.Text.Json;
 
