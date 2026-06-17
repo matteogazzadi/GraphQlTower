@@ -7,25 +7,37 @@ namespace GraphQlTower.Api.Data;
 public static class DatabaseSeeder
 {
     /// <summary>
-    /// Seeds upstream services on first boot from two sources (in priority order):
-    ///   1. appsettings.json / appsettings.{env}.json  →  "InitialServices" array
-    ///   2. TOWER_INITIAL_SERVICES environment variable  →  JSON array (used by K8s ConfigMap)
-    ///
-    /// Nothing is seeded if the registry already contains services.
+    /// Seeds upstream services on first boot from the TOWER_INITIAL_SERVICES environment variable.
+    /// This is set via a Kubernetes ConfigMap (see Helm values.yaml → initialServices).
+    /// Nothing is seeded if the registry already contains services, or if the env var is absent.
+    /// All ongoing management is done through the Admin UI at /services.
     /// </summary>
     public static async Task SeedAsync(
         IServiceRegistry registry,
-        IConfiguration configuration,
         ILogger logger,
         CancellationToken ct = default)
     {
         var existing = await registry.GetAllAsync(ct);
         if (existing.Count > 0) return;
 
-        var seeds = ReadFromConfiguration(configuration, logger)
-                 ?? ReadFromEnvironment(logger);
+        var json = Environment.GetEnvironmentVariable("TOWER_INITIAL_SERVICES");
+        if (string.IsNullOrWhiteSpace(json)) return;
+
+        List<ServiceSeedEntry>? seeds;
+        try
+        {
+            seeds = JsonSerializer.Deserialize<List<ServiceSeedEntry>>(json,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to parse TOWER_INITIAL_SERVICES — skipping seed.");
+            return;
+        }
 
         if (seeds is null || seeds.Count == 0) return;
+
+        logger.LogInformation("Seeding {Count} initial service(s) from TOWER_INITIAL_SERVICES.", seeds.Count);
 
         foreach (var seed in seeds)
         {
@@ -51,56 +63,12 @@ public static class DatabaseSeeder
                 };
 
                 await registry.AddAsync(service, ct);
-                logger.LogInformation(
-                    "Seeded upstream service '{Name}' ({Url})", seed.Name, seed.Url);
+                logger.LogInformation("Seeded service '{Name}' ({Url})", seed.Name, seed.Url);
             }
             catch (Exception ex)
             {
-                logger.LogWarning(ex,
-                    "Failed to seed upstream service '{Name}' — skipping.", seed.Name);
+                logger.LogWarning(ex, "Failed to seed service '{Name}' — skipping.", seed.Name);
             }
-        }
-    }
-
-    private static List<ServiceSeedEntry>? ReadFromConfiguration(
-        IConfiguration configuration, ILogger logger)
-    {
-        var section = configuration.GetSection("InitialServices");
-        if (!section.Exists()) return null;
-
-        try
-        {
-            var entries = section.Get<List<ServiceSeedEntry>>();
-            if (entries is { Count: > 0 })
-                logger.LogInformation(
-                    "Found {Count} initial service(s) in configuration.", entries.Count);
-            return entries;
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Failed to parse InitialServices from configuration.");
-            return null;
-        }
-    }
-
-    private static List<ServiceSeedEntry>? ReadFromEnvironment(ILogger logger)
-    {
-        var json = Environment.GetEnvironmentVariable("TOWER_INITIAL_SERVICES");
-        if (string.IsNullOrWhiteSpace(json)) return null;
-
-        try
-        {
-            var entries = JsonSerializer.Deserialize<List<ServiceSeedEntry>>(json,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-            if (entries is { Count: > 0 })
-                logger.LogInformation(
-                    "Found {Count} initial service(s) in TOWER_INITIAL_SERVICES env var.", entries.Count);
-            return entries;
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Failed to parse TOWER_INITIAL_SERVICES environment variable.");
-            return null;
         }
     }
 
