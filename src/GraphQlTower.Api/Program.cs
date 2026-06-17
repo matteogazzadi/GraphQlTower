@@ -80,14 +80,22 @@ using (var scope = app.Services.CreateScope())
     startupLogger.LogInformation("Database connection string: {ConnectionString}", dbPath);
 
     var pending = await db.Database.GetPendingMigrationsAsync();
-    startupLogger.LogInformation("Pending migrations: {Count} ({Names})",
-        pending.Count(), string.Join(", ", pending.Any() ? pending : new[] { "none" }));
+    startupLogger.LogInformation("Pending migrations: {Count}", pending.Count());
 
-    await db.Database.MigrateAsync();
-
-    var applied = await db.Database.GetAppliedMigrationsAsync();
-    startupLogger.LogInformation("Applied migrations after MigrateAsync: {Names}",
-        string.Join(", ", applied.Any() ? applied : new[] { "none" }));
+    if (pending.Any())
+    {
+        await db.Database.MigrateAsync();
+        startupLogger.LogInformation("Migrations applied.");
+    }
+    else
+    {
+        // In single-file publish mode EF can't discover migrations via reflection,
+        // so GetPendingMigrationsAsync returns empty. Fall back to EnsureCreated,
+        // which is a no-op when tables already exist.
+        var created = await db.Database.EnsureCreatedAsync();
+        if (created)
+            startupLogger.LogInformation("Database schema created via EnsureCreated (single-file publish mode).");
+    }
 
     var registry = scope.ServiceProvider.GetRequiredService<IServiceRegistry>();
     await DatabaseSeeder.SeedAsync(registry, startupLogger);
