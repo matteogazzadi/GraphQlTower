@@ -56,11 +56,17 @@ public class EfServiceRegistry : IServiceRegistry
         var newHeaders = service.Headers
             .Select(h => (h.Key, h.Value))
             .ToList();
+        var id = service.Id;
+
+        // Detach anything the caller may have handed us. The same instance can already be
+        // tracked from a prior call (e.g. the object returned by AddAsync), and its mutated
+        // navigation would otherwise corrupt change tracking. Reload a clean graph instead.
+        _db.ChangeTracker.Clear();
 
         var existing = await _db.UpstreamServices
             .Include(s => s.Headers)
-            .FirstOrDefaultAsync(s => s.Id == service.Id, ct)
-            ?? throw new InvalidOperationException($"Service {service.Id} not found.");
+            .FirstOrDefaultAsync(s => s.Id == id, ct)
+            ?? throw new InvalidOperationException($"Service {id} not found.");
 
         existing.DisplayName = displayName;
         existing.Url = url;
@@ -75,14 +81,14 @@ public class EfServiceRegistry : IServiceRegistry
             existing.Headers.Add(new ServiceHeader
             {
                 Id = Guid.NewGuid(),
-                UpstreamServiceId = existing.Id,
+                UpstreamServiceId = id,
                 Key = key,
                 Value = value
             });
         }
 
         await _db.SaveChangesAsync(ct);
-        _changes.OnNext(new RegistryChange(ChangeType.Updated, existing.Id));
+        _changes.OnNext(new RegistryChange(ChangeType.Updated, id));
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
