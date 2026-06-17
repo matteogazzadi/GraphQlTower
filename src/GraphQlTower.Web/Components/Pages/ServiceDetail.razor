@@ -1,0 +1,255 @@
+@page "/services/new"
+@page "/services/{Id:guid}"
+@using GraphQlTower.Shared.DTOs
+@using GraphQlTower.Shared.Models
+@using GraphQlTower.Web.Services
+@inject GatewayApiClient ApiClient
+@inject NavigationManager Nav
+
+<PageTitle>@(_isNew ? "Add Service" : "Edit Service") — GraphQL Tower</PageTitle>
+
+<FluentBreadcrumb>
+    <FluentBreadcrumbItem Href="/services">Services</FluentBreadcrumbItem>
+    <FluentBreadcrumbItem>@(_isNew ? "Add" : _form.DisplayName)</FluentBreadcrumbItem>
+</FluentBreadcrumb>
+
+<FluentStack Orientation="Orientation.Vertical" VerticalGap="24" Style="margin-top: 16px;">
+
+    <FluentLabel Typo="Typography.H3">@(_isNew ? "Add Upstream Service" : "Edit Service")</FluentLabel>
+
+    @if (_loading)
+    {
+        <FluentProgressRing />
+    }
+    else
+    {
+        <FluentGrid Spacing="3">
+            <!-- Edit Form -->
+            <FluentGridItem xs="12" md="6">
+                <FluentCard>
+                    <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
+                        <FluentLabel Typo="Typography.H5">Configuration</FluentLabel>
+
+                        @if (_isNew)
+                        {
+                            <FluentTextField @bind-Value="_form.Name"
+                                             Label="Schema Name (unique slug)"
+                                             Placeholder="e.g. products_service"
+                                             Required="true"
+                                             Style="width: 100%;" />
+                            <FluentLabel Style="font-size: 12px; opacity: 0.7;">
+                                Must start with a letter, use only letters/digits/underscores.
+                            </FluentLabel>
+                        }
+
+                        <FluentTextField @bind-Value="_form.DisplayName"
+                                         Label="Display Name"
+                                         Placeholder="e.g. Products Service"
+                                         Required="true"
+                                         Style="width: 100%;" />
+
+                        <FluentTextField @bind-Value="_form.Url"
+                                         Label="GraphQL Endpoint URL"
+                                         Placeholder="https://api.example.com/graphql"
+                                         Required="true"
+                                         Style="width: 100%;" />
+
+                        <FluentSwitch @bind-Value="_form.IsEnabled" Label="Enabled" />
+
+                        <!-- Headers -->
+                        <FluentDivider />
+                        <FluentStack HorizontalAlignment="HorizontalAlignment.SpaceBetween">
+                            <FluentLabel Typo="Typography.H6">Request Headers</FluentLabel>
+                            <FluentButton Appearance="Appearance.Stealth" OnClick="AddHeader">
+                                + Add Header
+                            </FluentButton>
+                        </FluentStack>
+
+                        @foreach (var (header, index) in _form.Headers.Select((h, i) => (h, i)))
+                        {
+                            <FluentStack HorizontalGap="8">
+                                <FluentTextField @bind-Value="header.Key"
+                                                 Placeholder="Header Name"
+                                                 Style="flex: 1;" />
+                                <FluentTextField @bind-Value="header.Value"
+                                                 Placeholder="Value"
+                                                 Style="flex: 2;"
+                                                 TextFieldType="@(header.Key.Contains("auth", StringComparison.OrdinalIgnoreCase) || header.Key.Contains("token", StringComparison.OrdinalIgnoreCase) ? TextFieldType.Password : TextFieldType.Text)" />
+                                <FluentButton Appearance="Appearance.Stealth"
+                                              OnClick="@(() => RemoveHeader(index))">✕</FluentButton>
+                            </FluentStack>
+                        }
+
+                        @if (!string.IsNullOrEmpty(_errorMessage))
+                        {
+                            <FluentMessageBar Intent="MessageIntent.Error">@_errorMessage</FluentMessageBar>
+                        }
+
+                        <FluentStack HorizontalGap="8">
+                            <FluentButton Appearance="Appearance.Accent" OnClick="SaveAsync" Loading="_saving">
+                                @(_isNew ? "Add Service" : "Save Changes")
+                            </FluentButton>
+                            <FluentButton Appearance="Appearance.Neutral" OnClick="@(() => Nav.NavigateTo("/services"))">
+                                Cancel
+                            </FluentButton>
+                            @if (!_isNew)
+                            {
+                                <FluentButton Appearance="Appearance.Stealth" OnClick="CheckHealthAsync">
+                                    Check Health
+                                </FluentButton>
+                            }
+                        </FluentStack>
+
+                        @if (_healthResult is not null)
+                        {
+                            <FluentMessageBar Intent="@(_healthResult.Contains("healthy") ? MessageIntent.Success : MessageIntent.Error)">
+                                @_healthResult
+                            </FluentMessageBar>
+                        }
+                    </FluentStack>
+                </FluentCard>
+            </FluentGridItem>
+
+            <!-- Schema Viewer -->
+            @if (!_isNew)
+            {
+                <FluentGridItem xs="12" md="6">
+                    <FluentCard Style="height: 100%;">
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="12">
+                            <FluentStack HorizontalAlignment="HorizontalAlignment.SpaceBetween">
+                                <FluentLabel Typo="Typography.H5">Schema</FluentLabel>
+                                <FluentButton Appearance="Appearance.Stealth" OnClick="LoadSchemaAsync" Loading="_schemaLoading">
+                                    Refresh
+                                </FluentButton>
+                            </FluentStack>
+
+                            @if (_schemaLoading)
+                            {
+                                <FluentProgressRing />
+                            }
+                            else if (_schema is null)
+                            {
+                                <FluentButton Appearance="Appearance.Neutral" OnClick="LoadSchemaAsync">
+                                    Load Schema
+                                </FluentButton>
+                            }
+                            else
+                            {
+                                <pre style="background: var(--neutral-layer-2); padding: 12px; border-radius: 4px; overflow: auto; font-size: 12px; max-height: 500px; white-space: pre-wrap; word-break: break-all;">@_schema</pre>
+                            }
+                        </FluentStack>
+                    </FluentCard>
+                </FluentGridItem>
+            }
+        </FluentGrid>
+    }
+</FluentStack>
+
+@code {
+    [Parameter] public Guid? Id { get; set; }
+
+    private bool _isNew => Id is null;
+    private bool _loading = true;
+    private bool _saving = false;
+    private bool _schemaLoading = false;
+    private string? _schema;
+    private string? _errorMessage;
+    private string? _healthResult;
+
+    private ServiceFormModel _form = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!_isNew && Id.HasValue)
+        {
+            var service = await ApiClient.GetServiceAsync(Id.Value);
+            if (service is not null)
+            {
+                _form = new ServiceFormModel
+                {
+                    Name = service.Name,
+                    DisplayName = service.DisplayName,
+                    Url = service.Url,
+                    IsEnabled = service.IsEnabled,
+                    Headers = service.Headers.Select(h => new ServiceHeaderDto
+                    {
+                        Id = h.Id,
+                        Key = h.Key,
+                        Value = h.Value == "***" ? "" : h.Value
+                    }).ToList()
+                };
+            }
+        }
+        _loading = false;
+    }
+
+    private void AddHeader() => _form.Headers.Add(new ServiceHeaderDto());
+
+    private void RemoveHeader(int index) => _form.Headers.RemoveAt(index);
+
+    private async Task SaveAsync()
+    {
+        _errorMessage = null;
+        _saving = true;
+
+        try
+        {
+            if (_isNew)
+            {
+                var req = new CreateUpstreamServiceRequest
+                {
+                    Name = _form.Name,
+                    DisplayName = _form.DisplayName,
+                    Url = _form.Url,
+                    IsEnabled = _form.IsEnabled,
+                    Headers = _form.Headers.Where(h => !string.IsNullOrWhiteSpace(h.Key)).ToList()
+                };
+                await ApiClient.CreateServiceAsync(req);
+            }
+            else
+            {
+                var req = new UpdateUpstreamServiceRequest
+                {
+                    DisplayName = _form.DisplayName,
+                    Url = _form.Url,
+                    IsEnabled = _form.IsEnabled,
+                    Headers = _form.Headers.Where(h => !string.IsNullOrWhiteSpace(h.Key)).ToList()
+                };
+                await ApiClient.UpdateServiceAsync(Id!.Value, req);
+            }
+            Nav.NavigateTo("/services");
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task LoadSchemaAsync()
+    {
+        if (!Id.HasValue) return;
+        _schemaLoading = true;
+        _schema = await ApiClient.GetServiceSchemaAsync(Id.Value);
+        _schemaLoading = false;
+    }
+
+    private async Task CheckHealthAsync()
+    {
+        if (!Id.HasValue) return;
+        var result = await ApiClient.CheckServiceHealthAsync(Id.Value);
+        _healthResult = result?.ToString() ?? "No response";
+    }
+
+    private class ServiceFormModel
+    {
+        public string Name { get; set; } = string.Empty;
+        public string DisplayName { get; set; } = string.Empty;
+        public string Url { get; set; } = string.Empty;
+        public bool IsEnabled { get; set; } = true;
+        public List<ServiceHeaderDto> Headers { get; set; } = new();
+    }
+}

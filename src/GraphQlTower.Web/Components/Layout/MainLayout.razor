@@ -1,0 +1,36 @@
+@inherits LayoutComponentBase
+
+<FluentLayout>
+    <FluentHeader>
+        <FluentStack HorizontalAlignment="HorizontalAlignment.Left" VerticalAlignment="VerticalAlignment.Center">
+            <FluentLabel Typo="Typography.H4" Color="Color.Lightweight">
+                GraphQL Tower
+            </FluentLabel>
+        </FluentStack>
+        <FluentSpacer />
+        <FluentLabel Color="Color.Lightweight" Style="font-size: 12px; opacity: 0.7;">
+            GraphQL Gateway &amp; Aggregator
+        </FluentLabel>
+    </FluentHeader>
+
+    <FluentBodyContent>
+        <FluentNavMenu Width="220" Title="Navigation">
+            <FluentNavLink Href="/" Match="NavLinkMatch.All">Dashboard</FluentNavLink>
+            <FluentNavLink Href="/services">Services</FluentNavLink>
+            <FluentNavLink Href="/playground">Playground</FluentNavLink>
+        </FluentNavMenu>
+
+        <FluentBodyContent Style="padding: 24px;">
+            @Body
+        </FluentBodyContent>
+    </FluentBodyContent>
+
+    <FluentFooter>
+        <FluentLabel Style="font-size: 12px; opacity: 0.6;">
+            GraphQL Tower &copy; @DateTime.Now.Year
+        </FluentLabel>
+    </FluentFooter>
+</FluentLayout>
+
+@code {
+}

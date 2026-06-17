@@ -1,0 +1,119 @@
+@page "/services"
+@using GraphQlTower.Shared.DTOs
+@using GraphQlTower.Shared.Models
+@using GraphQlTower.Web.Services
+@inject GatewayApiClient ApiClient
+@inject NavigationManager Nav
+
+<PageTitle>Services — GraphQL Tower</PageTitle>
+
+<FluentStack Orientation="Orientation.Vertical" VerticalGap="24">
+
+    <FluentStack HorizontalAlignment="HorizontalAlignment.SpaceBetween">
+        <FluentLabel Typo="Typography.H3">Upstream Services</FluentLabel>
+        <FluentButton Appearance="Appearance.Accent" OnClick="@(() => Nav.NavigateTo("/services/new"))">
+            Add Service
+        </FluentButton>
+    </FluentStack>
+
+    @if (_loading)
+    {
+        <FluentProgressRing />
+    }
+    else if (_services.Count == 0)
+    {
+        <FluentMessageBar Intent="MessageIntent.Info">
+            No upstream services configured yet. Click "Add Service" to get started.
+        </FluentMessageBar>
+    }
+    else
+    {
+        <FluentDataGrid Items="@_services.AsQueryable()" GridTemplateColumns="2fr 3fr 1fr 1fr 1fr 120px">
+            <PropertyColumn Property="@(s => s.DisplayName)" Title="Display Name" Sortable="true" />
+            <PropertyColumn Property="@(s => s.Url)" Title="URL" />
+            <PropertyColumn Property="@(s => s.Name)" Title="Schema Name" />
+            <TemplateColumn Title="Status">
+                <HealthBadge Status="@context.LastStatus" />
+            </TemplateColumn>
+            <TemplateColumn Title="Enabled">
+                <FluentSwitch Value="@context.IsEnabled"
+                              ValueChanged="@(v => ToggleAsync(context))" />
+            </TemplateColumn>
+            <TemplateColumn Title="Actions">
+                <FluentStack>
+                    <FluentButton Appearance="Appearance.Stealth"
+                                  OnClick="@(() => Nav.NavigateTo($"/services/{context.Id}"))">
+                        Edit
+                    </FluentButton>
+                    <FluentButton Appearance="Appearance.Stealth"
+                                  OnClick="@(() => ConfirmDeleteAsync(context))">
+                        Delete
+                    </FluentButton>
+                </FluentStack>
+            </TemplateColumn>
+        </FluentDataGrid>
+    }
+
+</FluentStack>
+
+@if (_deleteTarget is not null)
+{
+    <FluentDialog @bind-Hidden="_deleteDialogHidden" Modal="true">
+        <FluentDialogHeader>Confirm Delete</FluentDialogHeader>
+        <FluentDialogBody>
+            Are you sure you want to delete <strong>@_deleteTarget.DisplayName</strong>?
+            This will remove it from the gateway immediately.
+        </FluentDialogBody>
+        <FluentDialogFooter>
+            <FluentButton OnClick="CancelDelete">Cancel</FluentButton>
+            <FluentButton Appearance="Appearance.Accent" OnClick="ExecuteDeleteAsync">Delete</FluentButton>
+        </FluentDialogFooter>
+    </FluentDialog>
+}
+
+@code {
+    private List<UpstreamServiceDto> _services = new();
+    private bool _loading = true;
+    private UpstreamServiceDto? _deleteTarget;
+    private bool _deleteDialogHidden = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _services = await ApiClient.GetServicesAsync();
+        _loading = false;
+    }
+
+    private async Task ToggleAsync(UpstreamServiceDto service)
+    {
+        var updated = await ApiClient.ToggleServiceAsync(service.Id);
+        var idx = _services.FindIndex(s => s.Id == updated.Id);
+        if (idx >= 0) _services[idx] = updated;
+    }
+
+    private void ConfirmDeleteAsync(UpstreamServiceDto service)
+    {
+        _deleteTarget = service;
+        _deleteDialogHidden = false;
+    }
+
+    private void CancelDelete()
+    {
+        _deleteTarget = null;
+        _deleteDialogHidden = true;
+    }
+
+    private async Task ExecuteDeleteAsync()
+    {
+        if (_deleteTarget is null) return;
+        await ApiClient.DeleteServiceAsync(_deleteTarget.Id);
+        _deleteDialogHidden = true;
+        _deleteTarget = null;
+        await LoadAsync();
+    }
+}

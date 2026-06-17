@@ -1,0 +1,13 @@
+apiVersion: v2
+name: graphql-tower
+description: A GraphQL aggregator gateway that stitches multiple upstream GraphQL services into a single endpoint
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - graphql
+  - gateway
+  - stitching
+  - aggregator
+maintainers:
+  - name: GraphQL Tower Team

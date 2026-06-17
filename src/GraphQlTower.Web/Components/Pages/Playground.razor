@@ -1,0 +1,32 @@
+@page "/playground"
+@inject IConfiguration Configuration
+
+<PageTitle>Playground — GraphQL Tower</PageTitle>
+
+<FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
+    <FluentLabel Typo="Typography.H3">GraphQL Playground</FluentLabel>
+    <FluentLabel>
+        Explore and test the aggregated GraphQL schema using BananaCakePop, the built-in HotChocolate IDE.
+    </FluentLabel>
+
+    <FluentMessageBar Intent="MessageIntent.Info">
+        The playground is served directly by the gateway at <code>@_gatewayUrl/graphql/ui</code>
+    </FluentMessageBar>
+
+    <div style="width: 100%; height: 80vh; border: 1px solid var(--neutral-stroke-rest); border-radius: 4px; overflow: hidden;">
+        <iframe src="@_iframeUrl"
+                style="width: 100%; height: 100%; border: none;"
+                title="BananaCakePop GraphQL Playground" />
+    </div>
+</FluentStack>
+
+@code {
+    private string _gatewayUrl = string.Empty;
+    private string _iframeUrl = string.Empty;
+
+    protected override void OnInitialized()
+    {
+        _gatewayUrl = Configuration["GatewayApi:BaseUrl"] ?? "http://localhost:5000";
+        _iframeUrl = $"{_gatewayUrl.TrimEnd('/')}/graphql/ui";
+    }
+}

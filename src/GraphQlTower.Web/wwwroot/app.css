@@ -1,0 +1,26 @@
+html, body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    margin: 0;
+    padding: 0;
+    height: 100%;
+}
+
+.fluent-layout {
+    min-height: 100vh;
+}
+
+fluent-header {
+    background-color: #0078d4;
+}
+
+pre {
+    font-family: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
+}
+
+code {
+    background: rgba(0, 0, 0, 0.06);
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    font-size: 0.875em;
+}
