@@ -1,0 +1,29 @@
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+
+COPY ["src/GraphQlTower.Shared/GraphQlTower.Shared.csproj", "GraphQlTower.Shared/"]
+COPY ["src/GraphQlTower.Api/GraphQlTower.Api.csproj", "GraphQlTower.Api/"]
+RUN dotnet restore "GraphQlTower.Api/GraphQlTower.Api.csproj"
+
+COPY src/GraphQlTower.Shared/ GraphQlTower.Shared/
+COPY src/GraphQlTower.Api/ GraphQlTower.Api/
+RUN dotnet publish "GraphQlTower.Api/GraphQlTower.Api.csproj" \
+    -c Release \
+    -o /app/publish \
+    --no-restore
+
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+WORKDIR /app
+
+# Create data directory for SQLite PVC mount
+RUN mkdir -p /data && chown $APP_UID /data
+
+COPY --from=build /app/publish .
+
+USER $APP_UID
+EXPOSE 8080
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
+    CMD wget -qO- http://localhost:8080/healthz/live || exit 1
+
+ENTRYPOINT ["dotnet", "GraphQlTower.Api.dll"]

@@ -1,0 +1,85 @@
+@page "/"
+@using GraphQlTower.Shared.DTOs
+@using GraphQlTower.Shared.Models
+@using GraphQlTower.Web.Services
+@inject GatewayApiClient ApiClient
+
+<PageTitle>Dashboard — GraphQL Tower</PageTitle>
+
+<FluentStack Orientation="Orientation.Vertical" VerticalGap="24">
+
+    <FluentLabel Typo="Typography.H3">Dashboard</FluentLabel>
+
+    @if (_loading)
+    {
+        <FluentProgressRing />
+    }
+    else
+    {
+        <FluentGrid Spacing="3">
+            <FluentGridItem xs="12" sm="4">
+                <FluentCard Style="text-align: center; padding: 24px;">
+                    <FluentLabel Typo="Typography.H1" Color="Color.Accent">@_services.Count</FluentLabel>
+                    <FluentLabel>Total Services</FluentLabel>
+                </FluentCard>
+            </FluentGridItem>
+            <FluentGridItem xs="12" sm="4">
+                <FluentCard Style="text-align: center; padding: 24px;">
+                    <FluentLabel Typo="Typography.H1" Style="color: var(--success);">
+                        @_services.Count(s => s.LastStatus == ServiceHealthStatus.Healthy)
+                    </FluentLabel>
+                    <FluentLabel>Healthy</FluentLabel>
+                </FluentCard>
+            </FluentGridItem>
+            <FluentGridItem xs="12" sm="4">
+                <FluentCard Style="text-align: center; padding: 24px;">
+                    <FluentLabel Typo="Typography.H1" Style="color: var(--error);">
+                        @_services.Count(s => s.LastStatus == ServiceHealthStatus.Unhealthy)
+                    </FluentLabel>
+                    <FluentLabel>Unhealthy</FluentLabel>
+                </FluentCard>
+            </FluentGridItem>
+        </FluentGrid>
+
+        <FluentCard>
+            <FluentStack Orientation="Orientation.Vertical" VerticalGap="12">
+                <FluentStack HorizontalAlignment="HorizontalAlignment.SpaceBetween">
+                    <FluentLabel Typo="Typography.H5">Upstream Services</FluentLabel>
+                    <FluentButton Appearance="Appearance.Accent" OnClick="@(() => NavigationManager.NavigateTo("/services/new"))">
+                        Add Service
+                    </FluentButton>
+                </FluentStack>
+
+                <FluentDataGrid Items="@_services.AsQueryable()" GridTemplateColumns="2fr 3fr 1fr 1fr 100px">
+                    <PropertyColumn Property="@(s => s.DisplayName)" Title="Name" />
+                    <PropertyColumn Property="@(s => s.Url)" Title="URL" />
+                    <TemplateColumn Title="Status">
+                        <HealthBadge Status="@context.LastStatus" />
+                    </TemplateColumn>
+                    <TemplateColumn Title="Enabled">
+                        <FluentSwitch Value="@context.IsEnabled" Disabled="true" />
+                    </TemplateColumn>
+                    <TemplateColumn Title="Actions">
+                        <FluentButton Appearance="Appearance.Stealth"
+                                      OnClick="@(() => NavigationManager.NavigateTo($"/services/{context.Id}"))">
+                            Edit
+                        </FluentButton>
+                    </TemplateColumn>
+                </FluentDataGrid>
+            </FluentStack>
+        </FluentCard>
+    }
+</FluentStack>
+
+@code {
+    [Inject] private NavigationManager NavigationManager { get; set; } = default!;
+
+    private List<UpstreamServiceDto> _services = new();
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _services = await ApiClient.GetServicesAsync();
+        _loading = false;
+    }
+}

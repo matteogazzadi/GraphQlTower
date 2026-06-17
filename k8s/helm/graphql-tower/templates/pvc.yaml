@@ -1,0 +1,17 @@
+{{- if and .Values.api.persistence.enabled (eq .Values.api.persistence.engine "sqlite") }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "graphql-tower.fullname" . }}-api-data
+  labels:
+    {{- include "graphql-tower.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.api.persistence.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.api.persistence.size }}
+  {{- if .Values.api.persistence.storageClass }}
+  storageClassName: {{ .Values.api.persistence.storageClass }}
+  {{- end }}
+{{- end }}

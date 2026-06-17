@@ -1,0 +1,34 @@
+@using GraphQlTower.Shared.Models
+
+<span style="display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: 500; background: @BgColor; color: @TextColor;">
+    <span style="width: 8px; height: 8px; border-radius: 50%; background: @DotColor; display: inline-block;"></span>
+    @Status.ToString()
+</span>
+
+@code {
+    [Parameter] public ServiceHealthStatus Status { get; set; }
+
+    private string BgColor => Status switch
+    {
+        ServiceHealthStatus.Healthy => "#e6f4ea",
+        ServiceHealthStatus.Degraded => "#fff8e1",
+        ServiceHealthStatus.Unhealthy => "#fce8e6",
+        _ => "#f1f3f4"
+    };
+
+    private string TextColor => Status switch
+    {
+        ServiceHealthStatus.Healthy => "#137333",
+        ServiceHealthStatus.Degraded => "#7a4f00",
+        ServiceHealthStatus.Unhealthy => "#c5221f",
+        _ => "#5f6368"
+    };
+
+    private string DotColor => Status switch
+    {
+        ServiceHealthStatus.Healthy => "#34a853",
+        ServiceHealthStatus.Degraded => "#fbbc04",
+        ServiceHealthStatus.Unhealthy => "#ea4335",
+        _ => "#9aa0a6"
+    };
+}
